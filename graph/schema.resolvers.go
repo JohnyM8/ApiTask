@@ -7,6 +7,7 @@ package graph
 import (
 	"ApiTask/graph/model"
 	"context"
+	"fmt"
 )
 
 // CreateWallet is the resolver for the createWallet field.
@@ -26,10 +27,17 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 
 	for i := 0; i < n; i++ {
 		if r.wallets[i].Address == fromAddress {
+			if r.wallets[i].Balance-amount < 0 {
+				return nil, fmt.Errorf("insufficient balance")
+			}
 			r.wallets[i].Balance -= amount
 		}
+	}
+
+	for i := 0; i < n; i++ {
 		if r.wallets[i].Address == toAddress {
 			r.wallets[i].Balance += amount
+			break
 		}
 	}
 
