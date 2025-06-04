@@ -1,0 +1,27 @@
+# GraphQL schema example
+#
+# https://gqlgen.com/getting-started/
+
+type Wallet {
+  address: String!
+  balance: Int!
+}
+
+type TransferResult {
+  fromAddress: String!
+  toAddress: String!
+  amount: Int!
+}
+
+type Query {
+  wallets: [Wallet!]!
+}
+
+input NewWallet {
+  address: String!
+}
+
+type Mutation {
+  createWallet(input: NewWallet!): Wallet!
+  transfer(fromAddress: String!, toAddress: String!, amount: Int!): TransferResult!
+}
