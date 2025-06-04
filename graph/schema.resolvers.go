@@ -7,6 +7,7 @@ package graph
 import (
 	"ApiTask/graph/model"
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -17,28 +18,48 @@ func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWall
 		Balance: 1000000,
 	}
 
-	r.wallets = append(r.wallets, wallet)
+	_, err := r.DB.Exec("INSERT INTO wallets (address, balance) VALUES ($1, $2)", input.Address, 1000000)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not insert wallet: %w", err)
+	}
 	return wallet, nil
 }
 
 // Transfer is the resolver for the transfer field.
 func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toAddress string, amount int32) (*model.TransferResult, error) {
-	n := len(r.wallets)
+	fromRecord := r.DB.QueryRow("SELECT address, balance FROM wallets WHERE address = $1", fromAddress)
+	toRecord := r.DB.QueryRow("SELECT address, balance FROM wallets WHERE address = $1", toAddress)
 
-	for i := 0; i < n; i++ {
-		if r.wallets[i].Address == fromAddress {
-			if r.wallets[i].Balance-amount < 0 {
-				return nil, fmt.Errorf("insufficient balance")
-			}
-			r.wallets[i].Balance -= amount
-		}
+	fromBalance := 0
+	toBalance := 0
+
+	err := fromRecord.Scan(new(string), &fromBalance)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("wallet not found")
 	}
 
-	for i := 0; i < n; i++ {
-		if r.wallets[i].Address == toAddress {
-			r.wallets[i].Balance += amount
-			break
-		}
+	if fromBalance-int(amount) < 0 {
+		return nil, fmt.Errorf("insufficient balance")
+	}
+
+	fromBalance -= int(amount)
+
+	err = toRecord.Scan(new(string), &toBalance)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("wallet not found")
+	}
+
+	toBalance += int(amount)
+
+	_, err = r.DB.Query("UPDATE wallets SET balance = $1 WHERE address = $2", fromBalance, fromAddress)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	_, err = r.DB.Query("UPDATE wallets SET balance = $1 WHERE address = $2", toBalance, toAddress)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
 	return &model.TransferResult{
@@ -51,7 +72,30 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 
 // Wallets is the resolver for the wallets field.
 func (r *queryResolver) Wallets(ctx context.Context) ([]*model.Wallet, error) {
-	return r.wallets, nil
+	rows, err := r.DB.Query("SELECT address, balance FROM wallets")
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var wallets []*model.Wallet
+
+	for rows.Next() {
+		var w model.Wallet
+		err := rows.Scan(&w.Address, &w.Balance)
+
+		if err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+
+		wallets = append(wallets, &w)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return wallets, nil
 }
 
 // Mutation returns MutationResolver implementation.

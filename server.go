@@ -2,9 +2,12 @@ package main
 
 import (
 	"ApiTask/graph"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
+
+	_ "github.com/lib/pq"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
@@ -22,7 +25,18 @@ func main() {
 		port = defaultPort
 	}
 
-	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: &graph.Resolver{}}))
+	connStr := "postgres://postgres:PostGoreSQL@localhost:5432/ApiWalletsDB?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	//defer db.Close()
+
+	resolver := &graph.Resolver{}
+
+	resolver.DB = db
+
+	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
 
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.GET{})

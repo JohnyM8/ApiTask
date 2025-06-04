@@ -1,6 +1,6 @@
 package graph
 
-import "ApiTask/graph/model"
+import "database/sql"
 
 //go:generate go run github.com/99designs/gqlgen generate
 
@@ -9,5 +9,5 @@ import "ApiTask/graph/model"
 // It serves as dependency injection for your app, add any dependencies you require here.
 
 type Resolver struct {
-	wallets []*model.Wallet
+	DB *sql.DB
 }
