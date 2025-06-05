@@ -7,6 +7,13 @@
 go run server.go
 ```
 
+# Connecting to local database
+
+To connect to local database you need to change string in server.go file in 57 line.
+
+Template goes like this:
+"postgres://User:Password@localhost:5432/DBName?sslmode=disable"
+
 # Example queries
 
 To make this it queries you can http://localhost:8080/
