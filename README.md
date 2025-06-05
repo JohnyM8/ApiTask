@@ -1,6 +1,6 @@
 # Quick Start
 
-1. If you do no have go installed, folow the link https://go.dev/
+1. If you do not have go installed, folow the link https://go.dev/
 
 2. After cloning repo, to start a server type in terminal
 ```
@@ -14,6 +14,16 @@ To connect to local database you need to change string in server.go file in 57 l
 Template goes like this:
 "postgres://User:Password@localhost:5432/DBName?sslmode=disable"
 
+# Creating table
+
+In order to make server cooperate with databe you need to create the table 
+```
+Create table  wallets (
+   ID serial PRIMARY KEY,
+   address VARCHAR(255),
+   balance INT
+);
+```
 # Example queries
 
 To make this it queries you can http://localhost:8080/
