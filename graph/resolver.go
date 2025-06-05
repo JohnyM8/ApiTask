@@ -15,14 +15,15 @@ import (
 type Resolver struct {
 	DB *sql.DB
 
-	walletsNames   []string
-	namesListMutex *sync.RWMutex
-	databaseMutex  *sync.RWMutex
+	walletsNames      []string
+	namesListMutex    *sync.RWMutex
+	databaseMutex     *sync.RWMutex
+	threadsCountMutex *sync.RWMutex
 
-	walletsMutexes         map[string]*sync.RWMutex
-	wallets                map[string]*model.Wallet
-	walletsInUse           map[string]bool
-	walletsAmountToBalance map[string]int
+	walletsMutexes               map[string]*sync.RWMutex
+	wallets                      map[string]*model.Wallet
+	walletsInUse                 map[string]bool
+	walletsLockedPositiveThreads map[string]int
 }
 
 func (r *Resolver) InitWallets() {
@@ -33,10 +34,11 @@ func (r *Resolver) InitWallets() {
 	r.walletsMutexes = make(map[string]*sync.RWMutex)
 	r.wallets = make(map[string]*model.Wallet)
 	r.walletsInUse = make(map[string]bool)
-	r.walletsAmountToBalance = make(map[string]int)
+	r.walletsLockedPositiveThreads = make(map[string]int)
 
 	r.namesListMutex = &sync.RWMutex{}
 	r.databaseMutex = &sync.RWMutex{}
+	r.threadsCountMutex = &sync.RWMutex{}
 
 	rows, err := r.DB.Query("SELECT address, balance FROM wallets")
 	if err != nil {
@@ -53,10 +55,10 @@ func (r *Resolver) InitWallets() {
 			return
 		}
 
-		r.AddWallet(w)
+		r.AddWalletMAP(w)
 	}
 }
-func (r *Resolver) AddWallet(wallet *model.Wallet) {
+func (r *Resolver) AddWalletMAP(wallet *model.Wallet) {
 
 	r.namesListMutex.Lock()
 
@@ -67,7 +69,7 @@ func (r *Resolver) AddWallet(wallet *model.Wallet) {
 	r.walletsMutexes[wallet.Address] = &sync.RWMutex{}
 	r.wallets[wallet.Address] = wallet
 	r.walletsInUse[wallet.Address] = false
-	r.walletsAmountToBalance[wallet.Address] = 0
+	r.walletsLockedPositiveThreads[wallet.Address] = 0
 }
 
 func (r *Resolver) CheckIfAddressExists(address string) bool {
@@ -101,7 +103,7 @@ func (r *Resolver) UpdateWalletBalanceDBandMAP(address string, newBalance int32)
 	return true
 }
 
-func (r *Resolver) AddWalletToDB(wallet *model.Wallet) bool {
+func (r *Resolver) AddWalletDB(wallet *model.Wallet) bool {
 
 	r.databaseMutex.Lock()
 	defer r.databaseMutex.Unlock()

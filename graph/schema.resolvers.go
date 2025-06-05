@@ -21,9 +21,9 @@ func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWall
 		Balance: 1000000,
 	}
 
-	r.AddWalletToDB(wallet)
+	r.AddWalletDB(wallet)
 
-	r.AddWallet(wallet)
+	r.AddWalletMAP(wallet)
 
 	return wallet, nil
 }
@@ -38,21 +38,52 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 		return nil, fmt.Errorf("wallet not found")
 	}
 
-	r.walletsMutexes[fromAddress].Lock()
+	if amount > 0 {
+		r.threadsCountMutex.Lock()
+		r.walletsLockedPositiveThreads[fromAddress]++
+		r.threadsCountMutex.Unlock()
+	}
+	//r.walletsLockedPositiveThreads[toAddress]++
+
+	flag := true
+
+	for flag {
+		r.walletsMutexes[fromAddress].Lock()
+		r.threadsCountMutex.Lock()
+		if r.walletsLockedPositiveThreads[fromAddress] > 0 && amount < 0 {
+			r.walletsMutexes[fromAddress].Unlock()
+		} else {
+			flag = false
+		}
+		r.threadsCountMutex.Unlock()
+	}
+
+	if amount > 0 {
+		r.threadsCountMutex.Lock()
+		r.walletsLockedPositiveThreads[fromAddress]--
+		r.threadsCountMutex.Unlock()
+	}
+	//r.walletsMutexes[fromAddress].Lock()
 	r.walletsMutexes[toAddress].Lock()
+	//defer r.walletsMutexes[fromAddress].Unlock()
+	//defer r.walletsMutexes[toAddress].Unlock()
 
 	fromBalance := r.wallets[fromAddress].Balance
 	toBalance := r.wallets[toAddress].Balance
 
 	if fromBalance-amount < 0 {
+		r.walletsMutexes[fromAddress].Unlock()
+		r.walletsMutexes[toAddress].Unlock()
 		return nil, fmt.Errorf("insufficient balance")
 	}
 	fromBalance -= amount
 
-	if toBalance-amount < 0 {
+	if toBalance+amount < 0 {
+		r.walletsMutexes[fromAddress].Unlock()
+		r.walletsMutexes[toAddress].Unlock()
 		return nil, fmt.Errorf("insufficient balance")
 	}
-	toBalance -= amount
+	toBalance += amount
 
 	r.UpdateWalletBalanceDBandMAP(fromAddress, fromBalance)
 	r.UpdateWalletBalanceDBandMAP(toAddress, toBalance)
@@ -65,7 +96,6 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 		ToAddress:   toAddress,
 		Amount:      amount,
 	}, nil
-	//panic(fmt.Errorf("not implemented: Transfer - transfer"))
 }
 
 // Wallets is the resolver for the wallets field.
