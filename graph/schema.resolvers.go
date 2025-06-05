@@ -7,12 +7,15 @@ package graph
 import (
 	"ApiTask/graph/model"
 	"context"
-	"database/sql"
 	"fmt"
 )
 
 // CreateWallet is the resolver for the createWallet field.
 func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWallet) (*model.Wallet, error) {
+	if r.DB == nil {
+		return nil, fmt.Errorf("database not set")
+	}
+
 	wallet := &model.Wallet{
 		Address: input.Address,
 		Balance: 1000000,
@@ -23,44 +26,43 @@ func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWall
 	if err != nil {
 		return nil, fmt.Errorf("could not insert wallet: %w", err)
 	}
+
+	r.AddWallet(wallet)
+
 	return wallet, nil
 }
 
 // Transfer is the resolver for the transfer field.
 func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toAddress string, amount int32) (*model.TransferResult, error) {
-	fromRecord := r.DB.QueryRow("SELECT address, balance FROM wallets WHERE address = $1", fromAddress)
-	toRecord := r.DB.QueryRow("SELECT address, balance FROM wallets WHERE address = $1", toAddress)
+	if r.DB == nil {
+		return nil, fmt.Errorf("database not set")
+	}
 
-	fromBalance := 0
-	toBalance := 0
-
-	err := fromRecord.Scan(new(string), &fromBalance)
-	if err == sql.ErrNoRows {
+	if !r.CheckIfAddressExists(fromAddress) || !r.CheckIfAddressExists(toAddress) {
 		return nil, fmt.Errorf("wallet not found")
 	}
 
-	if fromBalance-int(amount) < 0 {
+	r.walletsMutexes[fromAddress].Lock()
+	r.walletsMutexes[toAddress].Lock()
+
+	fromBalance := r.wallets[fromAddress].Balance
+	toBalance := r.wallets[toAddress].Balance
+
+	if fromBalance-amount < 0 {
 		return nil, fmt.Errorf("insufficient balance")
 	}
+	fromBalance -= amount
 
-	fromBalance -= int(amount)
-
-	err = toRecord.Scan(new(string), &toBalance)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("wallet not found")
+	if toBalance-amount < 0 {
+		return nil, fmt.Errorf("insufficient balance")
 	}
+	toBalance -= amount
 
-	toBalance += int(amount)
+	r.UpdateWalletBalanceDBandMAP(fromAddress, fromBalance)
+	r.UpdateWalletBalanceDBandMAP(toAddress, toBalance)
 
-	_, err = r.DB.Query("UPDATE wallets SET balance = $1 WHERE address = $2", fromBalance, fromAddress)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-
-	_, err = r.DB.Query("UPDATE wallets SET balance = $1 WHERE address = $2", toBalance, toAddress)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
+	r.walletsMutexes[fromAddress].Unlock()
+	r.walletsMutexes[toAddress].Unlock()
 
 	return &model.TransferResult{
 		FromAddress: fromAddress,
@@ -72,28 +74,16 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 
 // Wallets is the resolver for the wallets field.
 func (r *queryResolver) Wallets(ctx context.Context) ([]*model.Wallet, error) {
-	rows, err := r.DB.Query("SELECT address, balance FROM wallets")
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-	defer rows.Close()
-
 	var wallets []*model.Wallet
 
-	for rows.Next() {
-		var w model.Wallet
-		err := rows.Scan(&w.Address, &w.Balance)
+	r.namesListMutex.Lock()
+	for i := 0; i < len(r.walletsNames); i++ {
 
-		if err != nil {
-			return nil, fmt.Errorf("scan failed: %w", err)
-		}
-
-		wallets = append(wallets, &w)
+		r.walletsMutexes[r.walletsNames[i]].Lock()
+		wallets = append(wallets, r.wallets[r.walletsNames[i]])
+		r.walletsMutexes[r.walletsNames[i]].Unlock()
 	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows error: %w", err)
-	}
+	r.namesListMutex.Unlock()
 
 	return wallets, nil
 }

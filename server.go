@@ -25,16 +25,11 @@ func main() {
 		port = defaultPort
 	}
 
-	connStr := "postgres://postgres:PostGoreSQL@localhost:5432/ApiWalletsDB?sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
-	}
-	//defer db.Close()
-
 	resolver := &graph.Resolver{}
 
-	resolver.DB = db
+	connectToDatabase(resolver)
+
+	resolver.InitWallets()
 
 	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
 
@@ -54,4 +49,16 @@ func main() {
 
 	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+
+	resolver.DB.Close()
+}
+
+func connectToDatabase(resolver *graph.Resolver) {
+	connStr := "postgres://postgres:PostGoreSQL@localhost:5432/ApiWalletsDB?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+
+	resolver.DB = db
 }
