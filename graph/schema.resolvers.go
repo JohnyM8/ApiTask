@@ -21,11 +21,7 @@ func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWall
 		Balance: 1000000,
 	}
 
-	_, err := r.DB.Exec("INSERT INTO wallets (address, balance) VALUES ($1, $2)", input.Address, 1000000)
-
-	if err != nil {
-		return nil, fmt.Errorf("could not insert wallet: %w", err)
-	}
+	r.AddWalletToDB(wallet)
 
 	r.AddWallet(wallet)
 

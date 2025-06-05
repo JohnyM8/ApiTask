@@ -17,6 +17,7 @@ type Resolver struct {
 
 	walletsNames   []string
 	namesListMutex *sync.RWMutex
+	databaseMutex  *sync.RWMutex
 
 	walletsMutexes         map[string]*sync.RWMutex
 	wallets                map[string]*model.Wallet
@@ -35,6 +36,7 @@ func (r *Resolver) InitWallets() {
 	r.walletsAmountToBalance = make(map[string]int)
 
 	r.namesListMutex = &sync.RWMutex{}
+	r.databaseMutex = &sync.RWMutex{}
 
 	rows, err := r.DB.Query("SELECT address, balance FROM wallets")
 	if err != nil {
@@ -43,6 +45,7 @@ func (r *Resolver) InitWallets() {
 	defer rows.Close()
 
 	for rows.Next() {
+
 		w := &model.Wallet{}
 		err := rows.Scan(&w.Address, &w.Balance)
 
@@ -54,19 +57,23 @@ func (r *Resolver) InitWallets() {
 	}
 }
 func (r *Resolver) AddWallet(wallet *model.Wallet) {
+
 	r.namesListMutex.Lock()
 
 	r.walletsNames = append(r.walletsNames, wallet.Address)
+
+	r.namesListMutex.Unlock()
+
 	r.walletsMutexes[wallet.Address] = &sync.RWMutex{}
 	r.wallets[wallet.Address] = wallet
 	r.walletsInUse[wallet.Address] = false
 	r.walletsAmountToBalance[wallet.Address] = 0
-
-	r.namesListMutex.Unlock()
 }
 
 func (r *Resolver) CheckIfAddressExists(address string) bool {
+
 	r.namesListMutex.Lock()
+	defer r.namesListMutex.Unlock()
 
 	flag := false
 
@@ -76,16 +83,14 @@ func (r *Resolver) CheckIfAddressExists(address string) bool {
 		}
 	}
 
-	if !flag {
-		return false
-	}
-
-	r.namesListMutex.Unlock()
-
-	return true
+	return flag
 }
 
 func (r *Resolver) UpdateWalletBalanceDBandMAP(address string, newBalance int32) bool {
+
+	r.databaseMutex.Lock()
+	defer r.databaseMutex.Unlock()
+
 	_, err := r.DB.Query("UPDATE wallets SET balance = $1 WHERE address = $2", newBalance, address)
 	if err != nil {
 		return false
@@ -94,4 +99,14 @@ func (r *Resolver) UpdateWalletBalanceDBandMAP(address string, newBalance int32)
 	r.wallets[address].Balance = int32(newBalance)
 
 	return true
+}
+
+func (r *Resolver) AddWalletToDB(wallet *model.Wallet) bool {
+
+	r.databaseMutex.Lock()
+	defer r.databaseMutex.Unlock()
+
+	_, err := r.DB.Exec("INSERT INTO wallets (address, balance) VALUES ($1, $2)", wallet.Address, wallet.Balance)
+
+	return err == nil
 }
