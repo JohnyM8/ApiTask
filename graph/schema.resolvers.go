@@ -16,6 +16,10 @@ func (r *mutationResolver) CreateWallet(ctx context.Context, input model.NewWall
 		return nil, fmt.Errorf("database not set")
 	}
 
+	if r.CheckIfAddressExists(input.Address) {
+		return nil, fmt.Errorf("wallet with given address already exists")
+	}
+
 	wallet := &model.Wallet{
 		Address: input.Address,
 		Balance: 1000000,
@@ -43,7 +47,6 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 		r.walletsLockedPositiveThreads[fromAddress]++
 		r.threadsCountMutex.Unlock()
 	}
-	//r.walletsLockedPositiveThreads[toAddress]++
 
 	flag := true
 
@@ -63,10 +66,8 @@ func (r *mutationResolver) Transfer(ctx context.Context, fromAddress string, toA
 		r.walletsLockedPositiveThreads[fromAddress]--
 		r.threadsCountMutex.Unlock()
 	}
-	//r.walletsMutexes[fromAddress].Lock()
+
 	r.walletsMutexes[toAddress].Lock()
-	//defer r.walletsMutexes[fromAddress].Unlock()
-	//defer r.walletsMutexes[toAddress].Unlock()
 
 	fromBalance := r.wallets[fromAddress].Balance
 	toBalance := r.wallets[toAddress].Balance

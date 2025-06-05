@@ -40,6 +40,26 @@ func (r *Resolver) InitWallets() {
 	r.databaseMutex = &sync.RWMutex{}
 	r.threadsCountMutex = &sync.RWMutex{}
 
+	r.InitWalletsStartState()
+}
+
+func (r *Resolver) InitWalletsStartState() {
+	rows, err := r.DB.Query("TRUNCATE TABLE wallets")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	wallet := &model.Wallet{
+		Address: "0x000000",
+		Balance: 1000000,
+	}
+
+	r.AddWalletDB(wallet)
+	r.AddWalletMAP(wallet)
+}
+
+func (r *Resolver) GetDataFromDB() {
 	rows, err := r.DB.Query("SELECT address, balance FROM wallets")
 	if err != nil {
 		return
@@ -58,7 +78,7 @@ func (r *Resolver) InitWallets() {
 		r.AddWalletMAP(w)
 	}
 }
-func (r *Resolver) AddWalletMAP(wallet *model.Wallet) {
+func (r *Resolver) AddWalletMAP(wallet *model.Wallet) bool {
 
 	r.namesListMutex.Lock()
 
@@ -70,6 +90,8 @@ func (r *Resolver) AddWalletMAP(wallet *model.Wallet) {
 	r.wallets[wallet.Address] = wallet
 	r.walletsInUse[wallet.Address] = false
 	r.walletsLockedPositiveThreads[wallet.Address] = 0
+
+	return true
 }
 
 func (r *Resolver) CheckIfAddressExists(address string) bool {
